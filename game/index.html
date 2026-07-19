@@ -13,15 +13,11 @@
       color: rgba(255,255,255,0.85); font-size: 13px;
       background: rgba(0,0,0,0.5); padding: 14px 18px;
       border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
-      backdrop-filter: blur(6px); line-height: 1.9;
-      pointer-events: none;
+      backdrop-filter: blur(6px); line-height: 1.9; pointer-events: none;
     }
     #controls-panel span { color: #e8c84a; font-weight: bold; }
 
-    #brand {
-      position: fixed; top: 20px; right: 24px;
-      text-align: right; pointer-events: none;
-    }
+    #brand { position: fixed; top: 20px; right: 24px; text-align: right; pointer-events: none; }
     #brand h1 { font-size: 22px; font-weight: 900; color: #fff; letter-spacing: 3px; text-transform: uppercase; }
     #brand p  { font-size: 11px; color: #eb0a1e; letter-spacing: 5px; margin-top: 2px; font-weight: bold; }
 
@@ -30,47 +26,35 @@
       display: flex; justify-content: space-between; align-items: flex-end;
       padding: 0 40px 30px; pointer-events: none;
     }
-
-    #rpm-display {
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
-    }
+    #rpm-display { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     #rpm-label { color: rgba(255,255,255,0.5); font-size: 11px; letter-spacing: 3px; }
-    #rpm-bar-track {
-      width: 180px; height: 8px; background: rgba(255,255,255,0.1);
-      border-radius: 4px; overflow: hidden;
-    }
+    #rpm-bar-track { width: 180px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
     #rpm-bar-fill {
       height: 100%; width: 10%; border-radius: 4px;
       background: linear-gradient(90deg, #22c55e, #facc15, #ef4444);
       transition: width 0.08s;
     }
-
-    #speedo {
-      text-align: center;
-    }
+    #speedo { text-align: center; }
     #speed-num {
       font-size: 80px; font-weight: 900; color: #fff;
       font-variant-numeric: tabular-nums; line-height: 1;
       text-shadow: 0 0 30px rgba(255,255,255,0.3);
     }
     #speed-unit { font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 4px; margin-top: 2px; }
-
     #right-hud { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-    #gear-display {
-      font-size: 48px; font-weight: 900; color: #eb0a1e;
-      text-shadow: 0 0 20px rgba(235,10,30,0.6);
-    }
+    #gear-display { font-size: 48px; font-weight: 900; color: #eb0a1e; text-shadow: 0 0 20px rgba(235,10,30,0.6); }
     #cam-display { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 2px; }
 
     #loading {
       position: fixed; inset: 0; background: #0a0a0a;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      color: #fff; z-index: 100;
+      color: #fff; z-index: 100; transition: opacity 0.5s;
     }
     #loading h2 { font-size: 28px; letter-spacing: 4px; margin-bottom: 8px; }
-    #loading p { font-size: 12px; color: #eb0a1e; letter-spacing: 6px; margin-bottom: 40px; }
+    #loading p  { font-size: 12px; color: #eb0a1e; letter-spacing: 6px; margin-bottom: 40px; }
     #loading-bar-track { width: 260px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; }
-    #loading-bar { width: 0; height: 3px; background: #eb0a1e; border-radius: 2px; transition: width 0.4s; }
+    #loading-bar { width: 0; height: 3px; background: #eb0a1e; border-radius: 2px; transition: width 0.3s; }
+    #load-status { margin-top: 16px; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 3px; }
   </style>
 </head>
 <body>
@@ -79,6 +63,7 @@
   <h2>TOYOTA TACOMA</h2>
   <p>TRD OFF-ROAD</p>
   <div id="loading-bar-track"><div id="loading-bar"></div></div>
+  <div id="load-status">INITIALIZING</div>
 </div>
 
 <div id="controls-panel">
@@ -113,33 +98,43 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 <script>
-// ─────────────────────────────────────────────
-// LOADING PROGRESS
-// ─────────────────────────────────────────────
-const loadingBar = document.getElementById('loading-bar');
-function setLoading(pct) { loadingBar.style.width = pct + '%'; }
 
-setTimeout(() => {
-  setLoading(30);
-  setTimeout(() => { setLoading(70); setTimeout(() => { setLoading(100);
-    setTimeout(() => { document.getElementById('loading').style.display = 'none'; }, 300);
-  }, 300); }, 200);
-}, 100);
+// ─────────────────────────────────────────────
+// LOADING HELPERS
+// ─────────────────────────────────────────────
+const loadingBar    = document.getElementById('loading-bar');
+const loadingStatus = document.getElementById('load-status');
+let _loadPct = 0;
+function setLoading(pct, label) {
+  _loadPct = Math.max(_loadPct, pct);
+  loadingBar.style.width = _loadPct + '%';
+  if (label) loadingStatus.textContent = label;
+}
+function hideLoading() {
+  const el = document.getElementById('loading');
+  el.style.opacity = '0';
+  setTimeout(() => el.style.display = 'none', 520);
+}
+setLoading(5, 'STARTING RENDERER');
 
 // ─────────────────────────────────────────────
 // RENDERER
 // ─────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
+renderer.outputEncoding = THREE.sRGBEncoding;
 document.body.appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
+const scene  = new THREE.Scene();
 scene.background = new THREE.Color(0x6AADCC);
 scene.fog = new THREE.Fog(0x6AADCC, 80, 320);
 
@@ -154,389 +149,325 @@ const sun = new THREE.DirectionalLight(0xfff5e0, 1.8);
 sun.position.set(60, 90, 40);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 600;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
 sun.shadow.camera.left = sun.shadow.camera.bottom = -120;
-sun.shadow.camera.right = sun.shadow.camera.top = 120;
+sun.shadow.camera.right = sun.shadow.camera.top  =  120;
 sun.shadow.bias = -0.001;
 scene.add(sun);
+scene.add(new THREE.DirectionalLight(0x6688cc, 0.4).position.set(-40, 20, -60) && new THREE.DirectionalLight(0x6688cc, 0.4));
 
-const fill = new THREE.DirectionalLight(0x6688cc, 0.4);
-fill.position.set(-40, 20, -60);
-scene.add(fill);
+const fillLight = new THREE.DirectionalLight(0x6688cc, 0.4);
+fillLight.position.set(-40, 20, -60);
+scene.add(fillLight);
 
-// Sky gradient via large sphere
-const skyGeo = new THREE.SphereGeometry(500, 16, 8);
+// Sky
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide,
-  uniforms: { topColor: { value: new THREE.Color(0x3a7bbd) }, bottomColor: { value: new THREE.Color(0xb8dff0) } },
-  vertexShader: `varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-  fragmentShader: `uniform vec3 topColor, bottomColor; varying vec3 vPos;
-    void main(){ float t = clamp((vPos.y+50.0)/300.0, 0.0, 1.0); gl_FragColor = vec4(mix(bottomColor,topColor,t),1.0); }`
+  uniforms: { top: { value: new THREE.Color(0x3a7bbd) }, bot: { value: new THREE.Color(0xb8dff0) } },
+  vertexShader:   `varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `uniform vec3 top,bot; varying vec3 vP; void main(){ float t=clamp((vP.y+50.0)/300.0,0.0,1.0); gl_FragColor=vec4(mix(bot,top,t),1.0); }`,
 });
-scene.add(new THREE.Mesh(skyGeo, skyMat));
-
-// Sun disc
-const sunDisc = new THREE.Mesh(
-  new THREE.CircleGeometry(8, 32),
-  new THREE.MeshBasicMaterial({ color: 0xfffae0 })
-);
-sunDisc.position.set(200, 280, -200);
-sunDisc.lookAt(0, 0, 0);
-scene.add(sunDisc);
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(500,16,8), skyMat));
+const sunDisc = new THREE.Mesh(new THREE.CircleGeometry(8,32), new THREE.MeshBasicMaterial({color:0xfffae0}));
+sunDisc.position.set(200,280,-200); sunDisc.lookAt(0,0,0); scene.add(sunDisc);
 
 // ─────────────────────────────────────────────
-// TERRAIN
+// TERRAIN — height function + visual mesh
 // ─────────────────────────────────────────────
 function heightAt(x, z) {
   return (
-    Math.sin(x * 0.04) * Math.cos(z * 0.04) * 5.5 +
-    Math.sin(x * 0.11 + 1.7) * Math.cos(z * 0.09 + 0.5) * 2.8 +
-    Math.sin(x * 0.28 + 0.3) * Math.cos(z * 0.25 + 1.1) * 1.2 +
-    Math.sin(x * 0.6) * Math.cos(z * 0.55) * 0.5
+    Math.sin(x*0.04)*Math.cos(z*0.04)*5.5 +
+    Math.sin(x*0.11+1.7)*Math.cos(z*0.09+0.5)*2.8 +
+    Math.sin(x*0.28+0.3)*Math.cos(z*0.25+1.1)*1.2 +
+    Math.sin(x*0.6)*Math.cos(z*0.55)*0.5
   );
 }
 
 const TSIZE = 350, TSEGS = 180;
-const tGeo = new THREE.PlaneGeometry(TSIZE, TSIZE, TSEGS, TSEGS);
-tGeo.rotateX(-Math.PI / 2);
+const tGeo  = new THREE.PlaneGeometry(TSIZE, TSIZE, TSEGS, TSEGS);
+tGeo.rotateX(-Math.PI/2);
 const tPos = tGeo.attributes.position;
-
-const vColors = new Float32Array(tPos.count * 3);
+const vCol = new Float32Array(tPos.count * 3);
 for (let i = 0; i < tPos.count; i++) {
-  const x = tPos.getX(i), z = tPos.getZ(i);
-  const y = heightAt(x, z);
+  const x = tPos.getX(i), z = tPos.getZ(i), y = heightAt(x,z);
   tPos.setY(i, y);
-  // Sandy/rocky gradient
-  const t = Math.max(0, Math.min(1, (y + 5) / 12));
-  vColors[i*3]   = 0.62 + t * 0.18; // R
-  vColors[i*3+1] = 0.48 + t * 0.12; // G
-  vColors[i*3+2] = 0.30 + t * 0.04; // B
+  const t = Math.max(0, Math.min(1, (y+5)/12));
+  vCol[i*3]=0.62+t*0.18; vCol[i*3+1]=0.48+t*0.12; vCol[i*3+2]=0.30+t*0.04;
 }
-tGeo.setAttribute('color', new THREE.BufferAttribute(vColors, 3));
+tGeo.setAttribute('color', new THREE.BufferAttribute(vCol,3));
 tGeo.computeVertexNormals();
-
-const terrain = new THREE.Mesh(tGeo, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 5 }));
+const terrain = new THREE.Mesh(tGeo, new THREE.MeshPhongMaterial({vertexColors:true, shininess:5}));
 terrain.receiveShadow = true;
 scene.add(terrain);
 
-// ─────────────────────────────────────────────
-// ENVIRONMENT: ROCKS, TREES, CACTI
-// ─────────────────────────────────────────────
-function placeAt(x, z) { return heightAt(x, z); }
-
-const rockMat = new THREE.MeshPhongMaterial({ color: 0x888877, shininess: 8 });
-const treeBase = new THREE.MeshPhongMaterial({ color: 0x4A3018 });
-const foliageMat = new THREE.MeshPhongMaterial({ color: 0x2D6A2D });
-const cactusMat = new THREE.MeshPhongMaterial({ color: 0x3A7A3A });
-
-function addRock(x, z) {
-  const s = 0.6 + Math.random() * 1.8;
-  const g = new THREE.DodecahedronGeometry(s, 0);
-  g.rotateY(Math.random() * Math.PI * 2);
-  g.rotateX(Math.random() * 0.5);
-  const m = new THREE.Mesh(g, rockMat);
-  m.position.set(x, placeAt(x, z) + s * 0.5 - 0.1, z);
-  m.castShadow = m.receiveShadow = true;
-  scene.add(m);
-}
-
-function addTree(x, z) {
-  const g = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 2.2, 7), treeBase);
-  trunk.position.y = 1.1; trunk.castShadow = true;
-  g.add(trunk);
-  for (let i = 0; i < 3; i++) {
-    const r = 1.6 - i * 0.35;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.8, 7), foliageMat);
-    cone.position.y = 1.9 + i * 1.1; cone.castShadow = true;
-    g.add(cone);
-  }
-  g.position.set(x, placeAt(x, z), z);
-  scene.add(g);
-}
-
-function addCactus(x, z) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 2.8, 7), cactusMat);
-  body.position.y = 1.4; body.castShadow = true;
-  g.add(body);
-  // Arms
-  for (let i = 0; i < 2; i++) {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 1.0, 6), cactusMat);
-    const angle = i === 0 ? -0.5 : 0.5;
-    arm.position.set(Math.sin(angle) * 0.35, 1.4, 0);
-    arm.rotation.z = angle;
-    arm.castShadow = true;
-    g.add(arm);
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), cactusMat);
-    top.position.set(Math.sin(angle) * 0.7, 1.9, 0);
-    top.castShadow = true;
-    g.add(top);
-  }
-  g.position.set(x, placeAt(x, z), z);
-  scene.add(g);
-}
-
-for (let i = 0; i < 70; i++) {
-  const a = Math.random() * Math.PI * 2, d = 18 + Math.random() * 150;
-  addRock(Math.cos(a) * d, Math.sin(a) * d);
-}
-for (let i = 0; i < 35; i++) {
-  const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 130;
-  addTree(Math.cos(a) * d, Math.sin(a) * d);
-}
-for (let i = 0; i < 25; i++) {
-  const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 140;
-  addCactus(Math.cos(a) * d, Math.sin(a) * d);
-}
+setLoading(15, 'BUILDING WORLD');
 
 // ─────────────────────────────────────────────
-// TOYOTA TACOMA MODEL
+// CANNON.JS WORLD
 // ─────────────────────────────────────────────
-const BODY_COLOR    = 0x4A6741; // Army Green
-const mBody   = new THREE.MeshPhongMaterial({ color: BODY_COLOR, shininess: 65 });
-const mBlack  = new THREE.MeshPhongMaterial({ color: 0x1A1A1A, shininess: 15 });
-const mDark   = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 8 });
-const mChrome = new THREE.MeshPhongMaterial({ color: 0xB8B8B0, shininess: 140 });
-const mGlass  = new THREE.MeshPhongMaterial({ color: 0x5588AA, transparent: true, opacity: 0.55, shininess: 120 });
-const mTire   = new THREE.MeshPhongMaterial({ color: 0x181818, shininess: 4 });
-const mRim    = new THREE.MeshPhongMaterial({ color: 0x787878, shininess: 90 });
-const mRedHub = new THREE.MeshPhongMaterial({ color: 0xCC0000, shininess: 60 });
-const mLight  = new THREE.MeshPhongMaterial({ color: 0xFFEECC, emissive: 0x221100 });
-const mTail   = new THREE.MeshPhongMaterial({ color: 0xFF2200, emissive: 0x440000 });
-const mAmber  = new THREE.MeshPhongMaterial({ color: 0xFFAA00, emissive: 0x221100 });
-const mDRL    = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, emissive: 0x666666 });
+const world = new CANNON.World();
+world.gravity.set(0, -9.82, 0);
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.solver.iterations = 10;
 
-function box(w, h, d) { return new THREE.BoxGeometry(w, h, d); }
-function cyl(rt, rb, h, s=8) { return new THREE.CylinderGeometry(rt, rb, h, s); }
-
-function createTacoma() {
-  const root = new THREE.Group();
-
-  function addMesh(geo, mat, px, py, pz, rx=0, ry=0, rz=0) {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(px, py, pz);
-    if (rx) m.rotation.x = rx;
-    if (ry) m.rotation.y = ry;
-    if (rz) m.rotation.z = rz;
-    m.castShadow = m.receiveShadow = true;
-    root.add(m);
-    return m;
+// ── Terrain heightfield (matches visual terrain exactly) ──
+// Cannon Heightfield: data[xi][yi], local X=world X, local Y=world -Z, local Z (height)=world Y
+// Body rotated -π/2 around X so heights go up (+Y world), positioned at terrain corner.
+const HF_N    = 64;
+const HF_ELEM = TSIZE / (HF_N - 1);
+const hfData  = [];
+for (let xi = 0; xi < HF_N; xi++) {
+  hfData.push([]);
+  for (let yi = 0; yi < HF_N; yi++) {
+    hfData[xi].push(heightAt(xi * HF_ELEM - TSIZE/2, TSIZE/2 - yi * HF_ELEM));
   }
-
-  // ── FRAME ──
-  addMesh(box(1.55, 0.14, 5.1), mDark, 0, 0.35, 0);
-
-  // ── BED ──
-  addMesh(box(1.62, 0.07, 1.72), mDark, 0, 0.70, -1.08);         // floor
-  addMesh(box(0.07, 0.50, 1.72), mBody, -0.83, 0.97, -1.08);     // L wall
-  addMesh(box(0.07, 0.50, 1.72), mBody,  0.83, 0.97, -1.08);     // R wall
-  addMesh(box(1.76, 0.50, 0.07), mBody,  0, 0.97, -0.22);        // front wall
-  addMesh(box(1.76, 0.50, 0.07), mBody,  0, 0.97, -1.94);        // tailgate
-  addMesh(box(0.09, 0.06, 1.72), mBody, -0.83, 1.22, -1.08);     // top rail L
-  addMesh(box(0.09, 0.06, 1.72), mBody,  0.83, 1.22, -1.08);     // top rail R
-  addMesh(box(1.76, 0.06, 0.09), mBody,  0, 1.22, -0.22);        // top rail front
-  // Taillights
-  addMesh(box(0.28, 0.18, 0.06), mTail, -0.68, 1.00, -1.95);
-  addMesh(box(0.28, 0.18, 0.06), mTail,  0.68, 1.00, -1.95);
-  addMesh(box(0.12, 0.08, 0.05), mAmber,-0.45, 1.00, -1.95);
-  addMesh(box(0.12, 0.08, 0.05), mAmber, 0.45, 1.00, -1.95);
-
-  // ── CAB LOWER ──
-  addMesh(box(1.78, 0.70, 2.05), mBody, 0, 0.95, 0.82);
-  // Rocker panels
-  addMesh(box(0.06, 0.22, 2.05), mBlack, -0.92, 0.64, 0.82);
-  addMesh(box(0.06, 0.22, 2.05), mBlack,  0.92, 0.64, 0.82);
-
-  // ── CAB UPPER ──
-  addMesh(box(1.70, 0.62, 1.80), mBody, 0, 1.62, 0.88);
-  // Roof
-  addMesh(box(1.68, 0.08, 1.78), mBody, 0, 1.96, 0.88);
-
-  // ── WINDOWS ──
-  addMesh(box(1.52, 0.54, 0.06), mGlass, 0, 1.60, 1.78);   // windshield
-  addMesh(box(1.40, 0.42, 0.06), mGlass, 0, 1.60, -0.04);  // rear glass
-  addMesh(box(0.05, 0.44, 0.95), mGlass, -0.86, 1.60, 0.88); // L side
-  addMesh(box(0.05, 0.44, 0.95), mGlass,  0.86, 1.60, 0.88); // R side
-  addMesh(box(0.05, 0.32, 0.55), mGlass, -0.86, 1.58, 0.22); // L rear q
-  addMesh(box(0.05, 0.32, 0.55), mGlass,  0.86, 1.58, 0.22); // R rear q
-  // A-pillar trim
-  addMesh(box(0.08, 0.55, 0.08), mBlack, -0.84, 1.60, 1.78);
-  addMesh(box(0.08, 0.55, 0.08), mBlack,  0.84, 1.60, 1.78);
-
-  // ── HOOD ──
-  const hood = addMesh(box(1.78, 0.09, 1.50), mBody, 0, 1.28, 2.20);
-  hood.rotation.x = 0.07;
-  // Hood scoop
-  addMesh(box(0.50, 0.10, 0.42), mBody, 0, 1.38, 2.12);
-  addMesh(box(0.30, 0.05, 0.18), mBlack, 0, 1.44, 2.00);
-
-  // ── FRONT FASCIA ──
-  addMesh(box(1.80, 0.26, 0.14), mChrome, 0, 0.62, 2.90); // bumper
-  addMesh(box(1.82, 0.22, 0.10), mBlack,  0, 0.38, 2.90); // lower val
-  addMesh(box(0.70, 0.08, 0.08), mDark,   0, 0.38, 2.94); // vent
-  // Skid plate
-  addMesh(box(1.60, 0.08, 0.45), new THREE.MeshPhongMaterial({color:0x444444,shininess:18}), 0, 0.30, 2.74);
-
-  // Grille area
-  addMesh(box(1.58, 0.38, 0.10), mChrome, 0, 0.98, 2.87); // surround
-  addMesh(box(1.36, 0.24, 0.07), mBlack,  0, 0.99, 2.90); // mesh
-  // TOYOTA lettering chrome bar
-  addMesh(box(0.82, 0.06, 0.06), mChrome, 0, 0.98, 2.93);
-
-  // Headlights
-  addMesh(box(0.36, 0.24, 0.09), mLight, -0.60, 1.06, 2.88);
-  addMesh(box(0.36, 0.24, 0.09), mLight,  0.60, 1.06, 2.88);
-  // LED inner strip
-  addMesh(box(0.28, 0.05, 0.07), mDRL, -0.60, 0.93, 2.90);
-  addMesh(box(0.28, 0.05, 0.07), mDRL,  0.60, 0.93, 2.90);
-  // Turn signals
-  addMesh(box(0.20, 0.12, 0.07), mAmber, -0.62, 0.80, 2.89);
-  addMesh(box(0.20, 0.12, 0.07), mAmber,  0.62, 0.80, 2.89);
-  // Fog lights
-  const fogG = cyl(0.07, 0.07, 0.06, 10); fogG.rotateX(Math.PI/2);
-  addMesh(fogG, mLight, -0.52, 0.54, 2.89);
-  addMesh(fogG.clone(), mLight,  0.52, 0.54, 2.89);
-
-  // ── FENDER FLARES ──
-  addMesh(box(0.16, 0.24, 0.68), mBlack, -0.94, 0.80, 1.82);
-  addMesh(box(0.16, 0.24, 0.68), mBlack,  0.94, 0.80, 1.82);
-  addMesh(box(0.16, 0.24, 0.72), mBlack, -0.94, 0.80, -0.98);
-  addMesh(box(0.16, 0.24, 0.72), mBlack,  0.94, 0.80, -0.98);
-
-  // ── SIDE MIRRORS ──
-  addMesh(box(0.16, 0.11, 0.24), mBody, -1.00, 1.44, 1.66);
-  addMesh(box(0.16, 0.11, 0.24), mBody,  1.00, 1.44, 1.66);
-  addMesh(box(0.03, 0.09, 0.18), new THREE.MeshPhongMaterial({color:0x7799AA,shininess:100}), -1.10, 1.44, 1.66);
-  addMesh(box(0.03, 0.09, 0.18), new THREE.MeshPhongMaterial({color:0x7799AA,shininess:100}),  1.10, 1.44, 1.66);
-
-  // ── DOOR HANDLES ──
-  addMesh(box(0.14, 0.04, 0.04), mChrome, -0.92, 1.02, 0.70);
-  addMesh(box(0.14, 0.04, 0.04), mChrome,  0.92, 1.02, 0.70);
-
-  // ── RUNNING BOARDS ──
-  addMesh(box(0.12, 0.06, 2.10), mBlack, -0.98, 0.43, 0.76);
-  addMesh(box(0.12, 0.06, 2.10), mBlack,  0.98, 0.43, 0.76);
-
-  // ── ROOF RACK ──
-  const rackMat = new THREE.MeshPhongMaterial({color:0x3A3A3A,shininess:40});
-  const crossG = cyl(0.03, 0.03, 1.52, 8); crossG.rotateZ(Math.PI/2);
-  for (let i = 0; i < 3; i++) addMesh(crossG.clone(), rackMat, 0, 2.02, 0.52 + i*0.58);
-  const sideG = cyl(0.025, 0.025, 1.38, 8);
-  addMesh(sideG.clone(), rackMat, -0.70, 2.02, 1.10);
-  addMesh(sideG.clone(), rackMat,  0.70, 2.02, 1.10);
-
-  // ── REAR BUMPER ──
-  addMesh(box(1.80, 0.22, 0.12), mChrome, 0, 0.62, -2.06);
-  addMesh(box(1.80, 0.16, 0.10), mBlack,  0, 0.42, -2.06);
-
-  // ── EXHAUST ──
-  const exG = cyl(0.045, 0.055, 0.38, 8); exG.rotateZ(Math.PI/2);
-  addMesh(exG, new THREE.MeshPhongMaterial({color:0x666655,shininess:50}), -0.65, 0.38, -2.00);
-
-  // ── TOW HITCH ──
-  addMesh(box(0.10, 0.10, 0.30), mChrome, 0, 0.44, -2.12);
-
-  // ─── WHEELS ───────────────────────────────
-  // Wheel: torus in YZ plane (axle = X), hub cylinder along X
-  function createWheelMesh() {
-    const wg = new THREE.Group();
-    const tireG = new THREE.TorusGeometry(0.43, 0.17, 14, 30); tireG.rotateY(Math.PI/2);
-    wg.add(Object.assign(new THREE.Mesh(tireG, mTire), { castShadow: true }));
-
-    const rimG = cyl(0.30, 0.30, 0.14, 8); rimG.rotateZ(Math.PI/2);
-    wg.add(Object.assign(new THREE.Mesh(rimG, mRim), { castShadow: true }));
-
-    // 5-spoke
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2;
-      const spk = new THREE.Mesh(box(0.13, 0.07, 0.07), mRim);
-      spk.position.set(0, Math.sin(a) * 0.17, Math.cos(a) * 0.17);
-      spk.castShadow = true;
-      wg.add(spk);
-    }
-    // Center hub (red TRD cap)
-    const hubG = cyl(0.065, 0.065, 0.16, 8); hubG.rotateZ(Math.PI/2);
-    wg.add(Object.assign(new THREE.Mesh(hubG, mRedHub), { castShadow: true }));
-    // Lug nuts
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2;
-      const lugG = cyl(0.018, 0.018, 0.09, 6); lugG.rotateZ(Math.PI/2);
-      const lug = new THREE.Mesh(lugG, mChrome);
-      lug.position.set(0.09, Math.sin(a) * 0.12, Math.cos(a) * 0.12);
-      wg.add(lug);
-      const lugR = lug.clone(); lugR.position.x = -0.09; wg.add(lugR);
-    }
-    return wg;
-  }
-
-  // Wheel positions: FL, FR, RL, RR
-  const wPos = [
-    { x: -0.97, z: 1.70 }, // FL
-    { x:  0.97, z: 1.70 }, // FR
-    { x: -0.97, z: -1.02 }, // RL
-    { x:  0.97, z: -1.02 }, // RR
-  ];
-
-  const steerGroups = [];
-  const spinMeshes  = [];
-
-  wPos.forEach((p, i) => {
-    const steer = new THREE.Group();
-    steer.position.set(p.x, 0.60, p.z);
-    const wm = createWheelMesh();
-    steer.add(wm);
-    root.add(steer);
-    steerGroups.push(steer);
-    spinMeshes.push(wm);
-  });
-
-  return { root, steerGroups, spinMeshes };
 }
+const groundBody = new CANNON.Body({ mass: 0 });
+groundBody.addShape(new CANNON.Heightfield(hfData, { elementSize: HF_ELEM }));
+groundBody.position.set(-TSIZE/2, 0, TSIZE/2);
+groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+world.addBody(groundBody);
 
-const { root: truck, steerGroups, spinMeshes } = createTacoma();
-truck.position.set(0, heightAt(0, 12) + 0.62, 12);
+// ── Chassis ──
+const SPAWN_X = 0, SPAWN_Z = 12;
+const chassisShape = new CANNON.Box(new CANNON.Vec3(1.0, 0.45, 2.4));
+const chassisBody  = new CANNON.Body({ mass: 1800 });
+// Shape offset upward = lower center of mass = more stable
+chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.3, 0));
+chassisBody.linearDamping  = 0.02;
+chassisBody.angularDamping = 0.4;
+chassisBody.position.set(SPAWN_X, heightAt(SPAWN_X, SPAWN_Z) + 3, SPAWN_Z);
+world.addBody(chassisBody);
+
+// ── RaycastVehicle ──
+const vehicle = new CANNON.RaycastVehicle({
+  chassisBody,
+  indexRightAxis:   0,  // +X = right
+  indexUpAxis:      1,  // +Y = up
+  indexForwardAxis: 2,  // +Z = forward
+});
+
+const wheelBase = {
+  radius:                          0.38,
+  directionLocal:                  new CANNON.Vec3(0, -1, 0),
+  suspensionStiffness:             30,
+  suspensionRestLength:            0.35,
+  frictionSlip:                    1.5,
+  dampingRelaxation:               2.3,
+  dampingCompression:              4.4,
+  maxSuspensionForce:              100000,
+  rollInfluence:                   0.01,
+  axleLocal:                       new CANNON.Vec3(1, 0, 0),
+  chassisConnectionPointLocal:     new CANNON.Vec3(),
+  maxSuspensionTravel:             0.35,
+  customSlidingRotationalSpeed:    -30,
+  useCustomSlidingRotationalSpeed: true,
+};
+
+// Wheel mount points: [right/left, height below chassis center, front/rear]
+// Track ±0.9 m, wheelbase front +1.35 / rear −1.35, mount −0.25 below chassis center
+[[-0.9,-0.25, 1.35],  // FL
+ [ 0.9,-0.25, 1.35],  // FR
+ [-0.9,-0.25,-1.35],  // RL
+ [ 0.9,-0.25,-1.35],  // RR
+].forEach(([x,y,z]) => {
+  wheelBase.chassisConnectionPointLocal.set(x,y,z);
+  vehicle.addWheel({...wheelBase, chassisConnectionPointLocal: new CANNON.Vec3(x,y,z)});
+});
+
+vehicle.addToWorld(world);
+
+setLoading(25, 'LOADING MODEL');
+
+// ─────────────────────────────────────────────
+// PROPS — rocks, trees, cacti
+// ─────────────────────────────────────────────
+const rockMat    = new THREE.MeshPhongMaterial({color:0x888877,shininess:8});
+const treeBase   = new THREE.MeshPhongMaterial({color:0x4A3018});
+const foliageMat = new THREE.MeshPhongMaterial({color:0x2D6A2D});
+const cactusMat  = new THREE.MeshPhongMaterial({color:0x3A7A3A});
+
+function addRock(x,z) {
+  const s = 0.6+Math.random()*1.8;
+  const g = new THREE.DodecahedronGeometry(s,0);
+  g.rotateY(Math.random()*Math.PI*2); g.rotateX(Math.random()*0.5);
+  const m = new THREE.Mesh(g,rockMat); m.castShadow=m.receiveShadow=true;
+  m.position.set(x,heightAt(x,z)+s*0.5-0.1,z); scene.add(m);
+}
+function addTree(x,z) {
+  const g=new THREE.Group();
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.25,2.2,7),treeBase);
+  trunk.position.y=1.1; trunk.castShadow=true; g.add(trunk);
+  for(let i=0;i<3;i++){
+    const cone=new THREE.Mesh(new THREE.ConeGeometry(1.6-i*0.35,1.8,7),foliageMat);
+    cone.position.y=1.9+i*1.1; cone.castShadow=true; g.add(cone);
+  }
+  g.position.set(x,heightAt(x,z),z); scene.add(g);
+}
+function addCactus(x,z) {
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,2.8,7),cactusMat);
+  body.position.y=1.4; body.castShadow=true; g.add(body);
+  for(let i=0;i<2;i++){
+    const a=i===0?-0.5:0.5;
+    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,1.0,6),cactusMat);
+    arm.position.set(Math.sin(a)*0.35,1.4,0); arm.rotation.z=a; arm.castShadow=true; g.add(arm);
+    const top=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,0.6,6),cactusMat);
+    top.position.set(Math.sin(a)*0.7,1.9,0); top.castShadow=true; g.add(top);
+  }
+  g.position.set(x,heightAt(x,z),z); scene.add(g);
+}
+for(let i=0;i<70;i++){const a=Math.random()*Math.PI*2,d=18+Math.random()*150;addRock(Math.cos(a)*d,Math.sin(a)*d);}
+for(let i=0;i<35;i++){const a=Math.random()*Math.PI*2,d=30+Math.random()*130;addTree(Math.cos(a)*d,Math.sin(a)*d);}
+for(let i=0;i<25;i++){const a=Math.random()*Math.PI*2,d=20+Math.random()*140;addCactus(Math.cos(a)*d,Math.sin(a)*d);}
+
+// ─────────────────────────────────────────────
+// TRUCK GROUP + HEADLIGHTS
+// ─────────────────────────────────────────────
+const truck = new THREE.Group();
 scene.add(truck);
 
-// Headlights (attached to truck)
-function makeSpot(x, y, z, tx, ty, tz) {
-  const s = new THREE.SpotLight(0xFFF5CC, 3, 40, Math.PI / 8, 0.4);
-  s.position.set(x, y, z);
-  truck.add(s);
-  const t = new THREE.Object3D(); t.position.set(tx, ty, tz);
-  truck.add(t); s.target = t;
-  return s;
+function makeSpot(x,y,z,tx,ty,tz) {
+  const s = new THREE.SpotLight(0xFFF5CC,3,40,Math.PI/8,0.4);
+  s.position.set(x,y,z); truck.add(s);
+  const t = new THREE.Object3D(); t.position.set(tx,ty,tz);
+  truck.add(t); s.target=t;
 }
-makeSpot(-0.60, 1.06, 3.5, -0.60, 0.5, 12);
-makeSpot( 0.60, 1.06, 3.5,  0.60, 0.5, 12);
+makeSpot(-0.5,0.9,2.3,-0.5,0.3,15);
+makeSpot( 0.5,0.9,2.3, 0.5,0.3,15);
 
 // ─────────────────────────────────────────────
-// PHYSICS & CONTROLS
+// WHEEL PIVOT BUILDER
+// ─────────────────────────────────────────────
+function buildWheelPivot(glbModel, prefix) {
+  const meshes = [];
+  glbModel.traverse(c => {
+    if (c.isMesh && c.name.toLowerCase().startsWith(prefix)) meshes.push(c);
+  });
+  if (!meshes.length) return null;
+  const bbox = new THREE.Box3();
+  meshes.forEach(m => bbox.expandByObject(m));
+  const worldCenter = bbox.getCenter(new THREE.Vector3());
+  const pivot = new THREE.Group();
+  pivot.position.copy(glbModel.worldToLocal(worldCenter.clone()));
+  glbModel.add(pivot);
+  meshes.forEach(m => pivot.attach(m));
+  return pivot;
+}
+
+// ─────────────────────────────────────────────
+// PBR MATERIALS
+// ─────────────────────────────────────────────
+function buildMaterials() {
+  return {
+    'body': new THREE.MeshPhysicalMaterial({color:0x4B5E3D,metalness:0.0,roughness:0.22,clearcoat:1.0,clearcoatRoughness:0.08}),
+    'plastic': new THREE.MeshStandardMaterial({color:0x111111,roughness:0.82,metalness:0.02}),
+    'dark': new THREE.MeshStandardMaterial({color:0x080808,roughness:0.92,metalness:0.0}),
+    'glass': new THREE.MeshPhysicalMaterial({color:0x080c10,metalness:0.08,roughness:0.0,transmission:0.0,transparent:false,side:THREE.DoubleSide}),
+    'rear_lights': new THREE.MeshStandardMaterial({color:0xcc1100,roughness:0.25,emissive:new THREE.Color(0xcc1100),emissiveIntensity:0.55,transparent:true,opacity:0.9}),
+    'brake_lights': new THREE.MeshStandardMaterial({color:0xdd0000,roughness:0.20,emissive:new THREE.Color(0xcc0000),emissiveIntensity:0.60}),
+    'reverse_lights': new THREE.MeshStandardMaterial({color:0xeeeeee,roughness:0.30,emissive:new THREE.Color(0xddddcc),emissiveIntensity:0.35}),
+    'turnsignal_lights': new THREE.MeshStandardMaterial({color:0xff8800,roughness:0.28,emissive:new THREE.Color(0xdd6600),emissiveIntensity:0.45}),
+    'mirrors': new THREE.MeshStandardMaterial({color:0xb0b0a8,metalness:0.88,roughness:0.12}),
+    'headlights': new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.92,roughness:0.10}),
+    'headlights_glass': new THREE.MeshPhysicalMaterial({color:0xffffff,metalness:0.0,roughness:0.0,transmission:0.88,transparent:true,opacity:0.10,ior:1.50,side:THREE.DoubleSide}),
+    'front_lights': new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.25,emissive:new THREE.Color(0xeeeeff),emissiveIntensity:0.70}),
+    'Tires': new THREE.MeshStandardMaterial({color:0x141414,roughness:0.94,metalness:0.0}),
+    'rim_main': new THREE.MeshStandardMaterial({color:0x222220,metalness:0.80,roughness:0.40}),
+    'rim_color': new THREE.MeshStandardMaterial({color:0xb8b8b0,metalness:0.95,roughness:0.15}),
+  };
+}
+
+// ─────────────────────────────────────────────
+// LOAD GLB
+// ─────────────────────────────────────────────
+let steerGroups = [];
+let spinMeshes  = [];
+let gameReady   = false;
+
+const dracoLoader = new THREE.DRACOLoader();
+dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+const gltfLoader = new THREE.GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader);
+
+gltfLoader.load(
+  'toyota_tacoma_trd.glb',
+  (gltf) => {
+    setLoading(88, 'PROCESSING MODEL');
+    const model = gltf.scene;
+
+    // Scale to ~5 m
+    const bbox  = new THREE.Box3().setFromObject(model);
+    const size  = bbox.getSize(new THREE.Vector3());
+    const scale = 5.0 / Math.max(size.x, size.y, size.z);
+    model.scale.setScalar(scale);
+
+    // Center XZ, sit bottom at y=0 in truck local space
+    bbox.setFromObject(model);
+    const center = bbox.getCenter(new THREE.Vector3());
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    model.position.y -= bbox.min.y;
+
+    // GLB natural forward is -X → rotate -π/2 to face +Z (drive direction)
+    model.rotation.y = -Math.PI / 2;
+
+    // PBR materials
+    const MAT = buildMaterials();
+    model.traverse(child => {
+      if (!child.isMesh) return;
+      child.castShadow = child.receiveShadow = true;
+      const matName = child.material?.name || '';
+      if (MAT[matName]) {
+        child.material = MAT[matName];
+      } else if (child.material) {
+        child.material = child.material.clone();
+        child.material.needsUpdate = true;
+      }
+    });
+
+    truck.add(model);
+    model.updateWorldMatrix(true, true);
+
+    // Wheel pivots
+    ['fl','fr','rl','rr'].forEach((prefix, i) => {
+      const pivot = buildWheelPivot(model, prefix);
+      if (pivot) {
+        spinMeshes.push(pivot);
+        if (i < 2) steerGroups.push(pivot);
+      }
+    });
+
+    setLoading(100, 'READY');
+    setTimeout(() => { hideLoading(); gameReady = true; }, 350);
+  },
+  (xhr) => {
+    if (xhr.total) setLoading(25 + (xhr.loaded/xhr.total)*63, `LOADING MODEL ${Math.round(xhr.loaded/xhr.total*100)}%`);
+  },
+  (err) => { console.error('GLB error:', err); loadingStatus.textContent='ERROR — CHECK CONSOLE'; }
+);
+
+// ─────────────────────────────────────────────
+// INPUT
 // ─────────────────────────────────────────────
 const keys = {};
 window.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefault(); });
 window.addEventListener('keyup',   e => { keys[e.code] = false; });
 
-let speed = 0, truckYaw = 0, steerAngle = 0, rpm = 820, gear = 'N';
-let camMode = 0;
-const CAM_LABELS = ['CHASE CAM', 'HOOD CAM', 'ORBIT CAM'];
-const camPos = new THREE.Vector3();
-const camLook = new THREE.Vector3();
-
 window.addEventListener('keydown', e => {
   if (e.code === 'KeyR') {
-    truck.position.set(0, heightAt(0,12)+0.62, 12);
-    truck.rotation.set(0,0,0); truck.quaternion.identity();
-    speed = 0; truckYaw = 0; steerAngle = 0;
+    // Reset chassis to spawn
+    chassisBody.position.set(SPAWN_X, heightAt(SPAWN_X,SPAWN_Z)+3, SPAWN_Z);
+    chassisBody.velocity.set(0,0,0);
+    chassisBody.angularVelocity.set(0,0,0);
+    chassisBody.quaternion.set(0,0,0,1);
   }
   if (e.code === 'KeyC') {
-    camMode = (camMode + 1) % 3;
+    camMode = (camMode+1)%3;
     document.getElementById('cam-display').textContent = CAM_LABELS[camMode];
   }
 });
 
-// Mouse look
 let mouseX = 0, mouseY = 0;
 window.addEventListener('mousemove', e => {
   if (document.pointerLockElement) {
@@ -547,225 +478,226 @@ window.addEventListener('mousemove', e => {
 renderer.domElement.addEventListener('click', () => renderer.domElement.requestPointerLock());
 
 // ─────────────────────────────────────────────
-// AUDIO — Web Audio engine rumble
+// AUDIO
 // ─────────────────────────────────────────────
 let audioCtx, osc1, osc2, gainNode;
 function initAudio() {
   if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  gainNode = audioCtx.createGain(); gainNode.gain.value = 0.07;
-  gainNode.connect(audioCtx.destination);
-
-  osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth';
-  osc1.frequency.value = 42; osc1.connect(gainNode); osc1.start();
-
-  osc2 = audioCtx.createOscillator(); osc2.type = 'square';
-  osc2.frequency.value = 28;
-  const g2 = audioCtx.createGain(); g2.gain.value = 0.4;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  gainNode = audioCtx.createGain(); gainNode.gain.value=0.07; gainNode.connect(audioCtx.destination);
+  osc1 = audioCtx.createOscillator(); osc1.type='sawtooth'; osc1.frequency.value=42;
+  osc1.connect(gainNode); osc1.start();
+  osc2 = audioCtx.createOscillator(); osc2.type='square'; osc2.frequency.value=28;
+  const g2 = audioCtx.createGain(); g2.gain.value=0.4;
   osc2.connect(g2); g2.connect(gainNode); osc2.start();
 }
-window.addEventListener('keydown', initAudio, { once: true });
+window.addEventListener('keydown', initAudio, {once:true});
 
 // ─────────────────────────────────────────────
-// DUST PARTICLE SYSTEM
+// DUST
 // ─────────────────────────────────────────────
 const DUST_N = 100;
-const dPos   = new Float32Array(DUST_N * 3);
-const dLife  = new Float32Array(DUST_N).fill(-1);
-const dVx    = new Float32Array(DUST_N);
-const dVz    = new Float32Array(DUST_N);
-
-for (let i = 0; i < DUST_N; i++) { dPos[i*3+1] = -999; }
-const dGeo = new THREE.BufferGeometry();
-dGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));
-const dMat = new THREE.PointsMaterial({ color: 0xC4A878, size: 2.2, transparent: true, opacity: 0.35, sizeAttenuation: true, depthWrite: false });
-scene.add(new THREE.Points(dGeo, dMat));
-
-let dustTimer = 0;
-function updateDust(dt) {
-  const spd = Math.abs(speed);
-  dustTimer += dt;
-  if (spd > 1.5 && dustTimer > 0.04) {
-    dustTimer = 0;
-    for (let i = 0; i < DUST_N; i++) {
-      if (dLife[i] < 0) {
-        const ox = (Math.random()-0.5)*1.4, oz = (Math.random()-0.5)*1.4;
-        dPos[i*3]   = truck.position.x + ox;
-        dPos[i*3+1] = truck.position.y + 0.05;
-        dPos[i*3+2] = truck.position.z + oz;
-        dVx[i] = (Math.random()-0.5)*0.6;
-        dVz[i] = (Math.random()-0.5)*0.6;
-        dLife[i] = 0.9 + Math.random()*0.5;
-        break;
+const dPos=new Float32Array(DUST_N*3), dLife=new Float32Array(DUST_N).fill(-1);
+const dVx=new Float32Array(DUST_N), dVz=new Float32Array(DUST_N);
+for(let i=0;i<DUST_N;i++) dPos[i*3+1]=-999;
+const dGeo=new THREE.BufferGeometry();
+dGeo.setAttribute('position',new THREE.BufferAttribute(dPos,3));
+scene.add(new THREE.Points(dGeo,new THREE.PointsMaterial({color:0xC4A878,size:2.2,transparent:true,opacity:0.35,sizeAttenuation:true,depthWrite:false})));
+let dustTimer=0;
+function updateDust(dt, pos, speed) {
+  dustTimer+=dt;
+  if(Math.abs(speed)>1.5 && dustTimer>0.04){
+    dustTimer=0;
+    for(let i=0;i<DUST_N;i++){
+      if(dLife[i]<0){
+        dPos[i*3]=pos.x+(Math.random()-0.5)*1.4;
+        dPos[i*3+1]=pos.y+0.1;
+        dPos[i*3+2]=pos.z+(Math.random()-0.5)*1.4;
+        dVx[i]=(Math.random()-0.5)*0.6; dVz[i]=(Math.random()-0.5)*0.6;
+        dLife[i]=0.9+Math.random()*0.5; break;
       }
     }
   }
-  for (let i = 0; i < DUST_N; i++) {
-    if (dLife[i] > 0) {
-      dLife[i] -= dt;
-      dPos[i*3]   += dVx[i] * dt;
-      dPos[i*3+1] += dt * 1.2;
-      dPos[i*3+2] += dVz[i] * dt;
-      if (dLife[i] <= 0) { dPos[i*3+1] = -999; dLife[i] = -1; }
+  for(let i=0;i<DUST_N;i++){
+    if(dLife[i]>0){
+      dLife[i]-=dt;
+      dPos[i*3]+=dVx[i]*dt; dPos[i*3+1]+=dt*1.2; dPos[i*3+2]+=dVz[i]*dt;
+      if(dLife[i]<=0){ dPos[i*3+1]=-999; dLife[i]=-1; }
     }
   }
-  dGeo.attributes.position.needsUpdate = true;
+  dGeo.attributes.position.needsUpdate=true;
 }
 
 // ─────────────────────────────────────────────
-// TERRAIN NORMAL (for truck tilt)
+// GAME LOOP STATE
 // ─────────────────────────────────────────────
-function terrainNormal(x, z) {
-  const e = 0.6;
-  const c = heightAt(x, z), r = heightAt(x+e, z), u = heightAt(x, z+e);
-  return new THREE.Vector3(-(r-c)/e, 1, -(u-c)/e).normalize();
-}
+const MAX_ENGINE_FORCE = 5000;
+const MAX_BRAKE_FORCE  = 120;
+const MAX_STEER        = 0.5;
+const STEER_RATE       = 4.0;  // radians/sec response
+
+let steerAngle = 0;
+let rpm = 820, gear = 'N';
+let camMode = 0;
+const CAM_LABELS = ['CHASE CAM','HOOD CAM','ORBIT CAM'];
+const camPos  = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+const _fwd    = new THREE.Vector3();
+
+const clock = new THREE.Clock();
 
 // ─────────────────────────────────────────────
 // GAME LOOP
 // ─────────────────────────────────────────────
-const clock = new THREE.Clock();
-const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v3 = new THREE.Vector3();
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const t  = clock.getElapsedTime();
 
-  // ── INPUT ──
+  // ── Keyboard state ──
   const throttle = keys['KeyW'] || keys['ArrowUp'];
   const brake    = keys['KeyS'] || keys['ArrowDown'];
   const left     = keys['KeyA'] || keys['ArrowLeft'];
   const right    = keys['KeyD'] || keys['ArrowRight'];
   const hbrake   = keys['Space'];
 
-  // Steering
-  const maxSteer = 0.60, steerRate = 2.8;
-  if (left)       steerAngle = Math.max(-maxSteer, steerAngle - steerRate*dt);
-  else if (right) steerAngle = Math.min( maxSteer, steerAngle + steerRate*dt);
-  else            steerAngle *= Math.pow(0.04, dt);
+  // ── Physics — only apply player input once GLB is loaded ──
+  if (gameReady) {
+    // Steer (smooth lerp toward target angle)
+    const steerTarget = left ? MAX_STEER : (right ? -MAX_STEER : 0);
+    steerAngle += (steerTarget - steerAngle) * Math.min(1, STEER_RATE * dt);
+    vehicle.setSteeringValue(steerAngle, 0);  // FL
+    vehicle.setSteeringValue(steerAngle, 1);  // FR
 
-  // Front wheel visual steer
-  steerGroups[0].rotation.y = steerAngle;
-  steerGroups[1].rotation.y = steerAngle;
+    // Get signed forward speed (positive = moving forward)
+    _fwd.set(0,0,1).applyQuaternion(truck.quaternion);
+    const vel = chassisBody.velocity;
+    const fwdSpeed = vel.x*_fwd.x + vel.y*_fwd.y + vel.z*_fwd.z;
 
-  // ── ENGINE FORCE ──
-  const MAX_FWD = 28, MAX_REV = 9, ACCEL = 16, BRAKE_F = 24, FRICTION = 3.8;
-  let force = 0;
-  if (throttle) force = ACCEL;
-  else if (brake) force = speed > 0.3 ? -BRAKE_F : -ACCEL * 0.7;
-  if (hbrake) speed *= Math.pow(0.06, dt);
+    // Engine force (negative = forward in Cannon convention with axle +X)
+    if (throttle) {
+      vehicle.applyEngineForce(-MAX_ENGINE_FORCE, 2);
+      vehicle.applyEngineForce(-MAX_ENGINE_FORCE, 3);
+    } else if (brake && fwdSpeed < -0.5) {
+      // Moving in reverse: apply forward engine to slow down
+      vehicle.applyEngineForce(-MAX_ENGINE_FORCE * 0.5, 2);
+      vehicle.applyEngineForce(-MAX_ENGINE_FORCE * 0.5, 3);
+    } else {
+      vehicle.applyEngineForce(0, 2);
+      vehicle.applyEngineForce(0, 3);
+    }
 
-  speed += force * dt;
-  speed -= Math.sign(speed) * FRICTION * dt;
-  speed -= speed * 0.045;
-  speed = Math.max(-MAX_REV, Math.min(MAX_FWD, speed));
-  if (Math.abs(speed) < 0.02) speed = 0;
+    // Braking
+    const bf = hbrake ? MAX_BRAKE_FORCE * 5
+             : (brake && fwdSpeed > 0.5) ? MAX_BRAKE_FORCE
+             : 4;  // slight rolling resistance at idle
+    for (let i = 0; i < 4; i++) vehicle.setBrake(bf, i);
 
-  // ── STEERING / YAW ──
-  if (Math.abs(speed) > 0.1) {
-    const WB = 2.72; // wheelbase
-    const turn = Math.tan(steerAngle) * speed / WB;
-    truckYaw -= turn * dt;
+    // Reverse: when nearly stopped and brake held, apply negative engine
+    if (brake && Math.abs(fwdSpeed) < 1.0) {
+      vehicle.applyEngineForce(MAX_ENGINE_FORCE * 0.4, 2);
+      vehicle.applyEngineForce(MAX_ENGINE_FORCE * 0.4, 3);
+    }
   }
 
-  // ── MOVE ──
-  const dx = Math.sin(truckYaw) * speed * dt;
-  const dz = Math.cos(truckYaw) * speed * dt;
-  const nx = Math.max(-160, Math.min(160, truck.position.x + dx));
-  const nz = Math.max(-160, Math.min(160, truck.position.z + dz));
-  const gy = heightAt(nx, nz);
+  // ── Step physics (always, so chassis settles even before GLB loads) ──
+  world.step(1/60, dt, 3);
 
-  truck.position.x = nx;
-  truck.position.z = nz;
-  truck.position.y = gy + 0.60 + Math.abs(speed) * 0.002 * Math.sin(t * 8);
+  // ── Sync Three.js truck to Cannon chassis ──
+  truck.position.copy(chassisBody.position);
+  truck.quaternion.copy(chassisBody.quaternion);
 
-  // Tilt to terrain
-  const tn = terrainNormal(nx, nz);
-  _q1.setFromUnitVectors(_v3.set(0,1,0), tn);
-  _q2.setFromAxisAngle(_v3.set(0,1,0), truckYaw);
-  truck.quaternion.slerp(_q1.multiply(_q2), 0.12);
+  // ── Wheel visual updates ──
+  vehicle.wheelInfos.forEach((wheel, i) => {
+    vehicle.updateWheelTransform(i);
+    if (i < 2 && steerGroups[i]) {
+      steerGroups[i].rotation.y = -wheel.steering;
+    }
+    if (spinMeshes[i]) {
+      spinMeshes[i].rotation.z += wheel.deltaRotation;
+    }
+  });
 
-  // ── WHEEL SPIN ──
-  const spinRate = speed / 0.43;
-  spinMeshes.forEach(w => { w.rotation.x += spinRate * dt; });
+  // ── Derived values for HUD / audio / camera ──
+  _fwd.set(0,0,1).applyQuaternion(truck.quaternion);
+  const truckYaw = Math.atan2(_fwd.x, _fwd.z);
+  const vel = chassisBody.velocity;
+  const fwdSpeed = vel.x*_fwd.x + vel.y*_fwd.y + vel.z*_fwd.z;
+  const mph = Math.abs(fwdSpeed) * 2.237;
 
-  // ── RPM / GEAR ──
-  const targetRPM = throttle
-    ? 820 + Math.abs(speed) * 195 + (Math.random()-0.5)*80
-    : 820 + Math.abs(speed) * 95;
+  // ── Simulated RPM / gear ──
+  const throttle2 = keys['KeyW'] || keys['ArrowUp']; // re-read for audio
+  const targetRPM = throttle2
+    ? 820 + Math.abs(fwdSpeed)*195 + (Math.random()-0.5)*80
+    : 820 + Math.abs(fwdSpeed)*95;
   rpm += (targetRPM - rpm) * 4 * dt;
-  rpm = Math.max(820, Math.min(6800, rpm));
+  rpm  = Math.max(820, Math.min(6800, rpm));
 
-  if (speed < -0.2) gear = 'R';
-  else if (speed < 0.2) gear = 'N';
-  else if (rpm < 1800) gear = '1';
-  else if (rpm < 2600) gear = '2';
-  else if (rpm < 3400) gear = '3';
-  else if (rpm < 4300) gear = '4';
-  else gear = '5';
+  if (fwdSpeed < -0.5)         gear = 'R';
+  else if (Math.abs(fwdSpeed) < 0.5) gear = 'N';
+  else if (rpm < 1800)         gear = '1';
+  else if (rpm < 2600)         gear = '2';
+  else if (rpm < 3400)         gear = '3';
+  else if (rpm < 4300)         gear = '4';
+  else                         gear = '5';
 
-  // Audio pitch
+  // ── Audio ──
   if (osc1) {
     const f = 20 + rpm * 0.016;
     osc1.frequency.setTargetAtTime(f, audioCtx.currentTime, 0.06);
-    osc2.frequency.setTargetAtTime(f * 0.5, audioCtx.currentTime, 0.06);
-    gainNode.gain.setTargetAtTime(throttle ? 0.09 : 0.06, audioCtx.currentTime, 0.1);
+    osc2.frequency.setTargetAtTime(f*0.5, audioCtx.currentTime, 0.06);
+    gainNode.gain.setTargetAtTime(throttle2?0.09:0.06, audioCtx.currentTime, 0.1);
   }
 
-  // ── CAMERA ──
-  const fwd = new THREE.Vector3(Math.sin(truckYaw), 0, Math.cos(truckYaw));
-  const tp  = truck.position;
-
+  // ── Camera ──
+  const tp = truck.position;
   if (camMode === 0) {
-    // Chase cam with mouse look orbit
     const orbitYaw   = truckYaw + mouseX;
     const orbitPitch = mouseY;
-    const dist = 9.5, height = 4.0;
-    const tx = tp.x - Math.sin(orbitYaw) * dist * Math.cos(orbitPitch);
-    const ty = tp.y + height + Math.sin(orbitPitch) * dist;
-    const tz = tp.z - Math.cos(orbitYaw) * dist * Math.cos(orbitPitch);
-    camPos.lerp(new THREE.Vector3(tx, ty, tz), Math.min(1, 5*dt));
-    camLook.lerp(tp.clone().add(new THREE.Vector3(0, 1.2, 0)), Math.min(1, 8*dt));
+    const dist=9.5, height=4.0;
+    const tx = tp.x - Math.sin(orbitYaw)*dist*Math.cos(orbitPitch);
+    const ty = tp.y + height + Math.sin(orbitPitch)*dist;
+    const tz = tp.z - Math.cos(orbitYaw)*dist*Math.cos(orbitPitch);
+    camPos.lerp(new THREE.Vector3(tx,ty,tz), Math.min(1,5*dt));
+    camLook.lerp(new THREE.Vector3(tp.x,tp.y+1.2,tp.z), Math.min(1,8*dt));
     camera.position.copy(camPos);
     camera.lookAt(camLook);
   } else if (camMode === 1) {
-    // Hood cam
-    const up = tp.clone().add(fwd.clone().multiplyScalar(2.8)).add(new THREE.Vector3(0, 1.45, 0));
+    const up = tp.clone().add(_fwd.clone().multiplyScalar(2.0)).add(new THREE.Vector3(0,1.6,0));
     camera.position.copy(up);
-    camera.lookAt(tp.clone().add(fwd.clone().multiplyScalar(25)));
+    camera.lookAt(tp.clone().add(_fwd.clone().multiplyScalar(25)));
   } else {
-    // Orbit cinematic
-    const oa = t * 0.18;
-    const od = 14 + Math.sin(t * 0.12) * 3;
-    const oh = 5  + Math.sin(t * 0.17) * 2;
-    camera.position.set(tp.x + Math.cos(oa)*od, tp.y + oh, tp.z + Math.sin(oa)*od);
-    camera.lookAt(tp.x, tp.y + 1, tp.z);
+    const oa=t*0.18, od=14+Math.sin(t*0.12)*3, oh=5+Math.sin(t*0.17)*2;
+    camera.position.set(tp.x+Math.cos(oa)*od, tp.y+oh, tp.z+Math.sin(oa)*od);
+    camera.lookAt(tp.x, tp.y+1, tp.z);
   }
 
-  // Follow sun shadow
-  sun.position.set(tp.x + 60, 90, tp.z + 40);
+  // Follow shadow
+  sun.position.set(tp.x+60,90,tp.z+40);
   sun.target.position.copy(tp);
   sun.target.updateMatrixWorld();
 
-  // Dust
-  updateDust(dt);
+  // ── Dust ──
+  updateDust(dt, tp, fwdSpeed);
 
   // ── HUD ──
-  const mph = Math.abs(speed) * 2.237;
-  document.getElementById('speed-num').textContent = Math.round(mph);
-  document.getElementById('gear-display').textContent = gear;
-  document.getElementById('rpm-bar-fill').style.width = Math.min(100, ((rpm-820)/6000)*100) + '%';
+  if (gameReady) {
+    document.getElementById('speed-num').textContent = Math.round(mph);
+    document.getElementById('gear-display').textContent = gear;
+    document.getElementById('rpm-bar-fill').style.width = Math.min(100, ((rpm-820)/6000)*100)+'%';
+  }
 
   renderer.render(scene, camera);
 }
+
 animate();
 
 window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
+  camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+
 </script>
 </body>
 </html>
