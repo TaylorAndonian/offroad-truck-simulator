@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Toyota Tacoma TRD — Model Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #060912; font-family: Arial, sans-serif; }
+    canvas { display: block; }
+
+    /* ── LOADING SCREEN ── */
+    #loading {
+      position: fixed; inset: 0; background: #060912;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 100; transition: opacity 0.6s;
+    }
+    #loading h2 { font-size: 20px; font-weight: 900; color: #fff; letter-spacing: 5px; margin-bottom: 6px; }
+    #loading p  { font-size: 10px; color: #eb0a1e; letter-spacing: 7px; margin-bottom: 44px; }
+    #bar-track  { width: 240px; height: 2px; background: rgba(255,255,255,0.10); border-radius: 1px; }
+    #bar-fill   { width: 0%; height: 2px; background: #eb0a1e; border-radius: 1px; transition: width 0.25s; }
+    #load-status { margin-top: 18px; font-size: 10px; color: rgba(255,255,255,0.30); letter-spacing: 2px; }
+
+    /* ── HUD ── */
+    #hud-tl {
+      position: fixed; top: 28px; left: 32px; pointer-events: none;
+    }
+    #hud-tl h1 { font-size: 17px; font-weight: 900; color: #fff; letter-spacing: 4px; }
+    #hud-tl p  { font-size: 9px; color: #eb0a1e; letter-spacing: 6px; margin-top: 5px; }
+
+    #hud-tr {
+      position: fixed; top: 28px; right: 32px; text-align: right; pointer-events: none;
+    }
+    #hud-tr div { font-size: 10px; color: rgba(255,255,255,0.32); letter-spacing: 1.5px; line-height: 1.9; }
+    #hud-tr span { color: rgba(255,255,255,0.72); }
+
+    #hint {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: rgba(255,255,255,0.22); letter-spacing: 3px;
+      pointer-events: none; white-space: nowrap;
+    }
+
+    /* ── COLOR SWATCHES ── */
+    #swatches {
+      position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 11px; align-items: center;
+    }
+    .sw {
+      width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.18); transition: border-color .2s, transform .15s;
+    }
+    .sw:hover { transform: scale(1.25); border-color: rgba(255,255,255,0.6); }
+    .sw.active { border-color: #fff; transform: scale(1.18); }
+
+    /* ── MATERIAL DEBUG PANEL (hidden by default) ── */
+    #mat-panel {
+      position: fixed; top: 80px; right: 32px;
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px; padding: 12px 16px; max-height: 60vh; overflow-y: auto;
+      display: none; font-size: 10px; color: rgba(255,255,255,0.6);
+      line-height: 1.7; max-width: 220px; pointer-events: all;
+    }
+    #mat-panel div { cursor: pointer; }
+    #mat-panel div:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <h2>TOYOTA TACOMA</h2>
+  <p>TRD OFF-ROAD</p>
+  <div id="bar-track"><div id="bar-fill"></div></div>
+  <div id="load-status">INITIALIZING</div>
+</div>
+
+<!-- HUD -->
+<div id="hud-tl">
+  <h1>Toyota Tacoma</h1>
+  <p>TRD · 3D Model Viewer</p>
+</div>
+<div id="hud-tr">
+  <div>ENGINE &nbsp;<span>3.5L V6</span></div>
+  <div>POWER &nbsp;&nbsp;<span>278 HP</span></div>
+  <div>TORQUE &nbsp;<span>265 lb-ft</span></div>
+  <div>DRIVE &nbsp;&nbsp;<span>4WD</span></div>
+</div>
+
+<!-- Color Picker -->
+<div id="swatches">
+  <div class="sw active" style="background:#4B5E3D" data-hex="4B5E3D" title="Army Green"></div>
+  <div class="sw" style="background:#f0f0ee" data-hex="f0f0ee" title="Super White"></div>
+  <div class="sw" style="background:#111111" data-hex="111111" title="Midnight Black"></div>
+  <div class="sw" style="background:#4f5d68" data-hex="4A5560" title="Magnetic Gray"></div>
+  <div class="sw" style="background:#7a1515" data-hex="6B1515" title="Barcelona Red"></div>
+  <div class="sw" style="background:#c07820" data-hex="b07020" title="Solar Octane"></div>
+</div>
+
+<div id="hint">DRAG · SCROLL TO ZOOM · DOUBLE-CLICK TO RESET</div>
+
+<!-- Material debug (press M to toggle) -->
+<div id="mat-panel"><b style="color:#fff">MATERIALS</b><br><br></div>
+
+<!-- Three.js + Loaders -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════
+// RENDERER
+// ════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.80;
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x080c14);
+
+const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.01, 200);
+camera.position.set(5, 2.2, 5.5);
+
+// ════════════════════════════════════════════════
+// LOADING PROGRESS HELPER
+// ════════════════════════════════════════════════
+const barFill   = document.getElementById('bar-fill');
+const loadStatus = document.getElementById('load-status');
+let   loadPct   = 0;
+function setProgress(pct, label) {
+  loadPct = Math.max(loadPct, pct);
+  barFill.style.width = loadPct + '%';
+  if (label) loadStatus.textContent = label;
+}
+function hideLoading() {
+  const el = document.getElementById('loading');
+  el.style.opacity = '0';
+  setTimeout(() => el.style.display = 'none', 650);
+}
+
+setProgress(5, 'STARTING RENDERER');
+
+// ════════════════════════════════════════════════
+// ORBIT CONTROLS (custom, no CDN dependency)
+// ════════════════════════════════════════════════
+const orb = { theta: -0.6, phi: 0.22, r: 8.5, autoSpin: true };
+const tgt = { theta: orb.theta, phi: orb.phi, r: orb.r };
+let   dragging = false, lastX = 0, lastY = 0;
+const lookAt = new THREE.Vector3(0, 0.9, 0);
+
+renderer.domElement.addEventListener('mousedown',  e => { dragging = true; lastX = e.clientX; lastY = e.clientY; orb.autoSpin = false; });
+renderer.domElement.addEventListener('touchstart', e => { dragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; orb.autoSpin = false; }, { passive: true });
+window.addEventListener('mouseup',  () => dragging = false);
+window.addEventListener('touchend', () => dragging = false);
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tgt.theta -= (e.clientX - lastX) * 0.007;
+  tgt.phi    = Math.max(0.04, Math.min(Math.PI / 2.1, tgt.phi + (e.clientY - lastY) * 0.005));
+  lastX = e.clientX; lastY = e.clientY;
+});
+window.addEventListener('touchmove', e => {
+  if (!dragging) return;
+  tgt.theta -= (e.touches[0].clientX - lastX) * 0.007;
+  tgt.phi    = Math.max(0.04, Math.min(Math.PI / 2.1, tgt.phi + (e.touches[0].clientY - lastY) * 0.005));
+  lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+}, { passive: true });
+window.addEventListener('wheel', e => {
+  tgt.r = Math.max(2, Math.min(18, tgt.r + e.deltaY * 0.014));
+}, { passive: true });
+renderer.domElement.addEventListener('dblclick', () => {
+  tgt.theta = -0.6; tgt.phi = 0.22; tgt.r = 8.5; orb.autoSpin = true;
+});
+
+function tickCamera(dt) {
+  const lf = 1 - Math.pow(0.005, dt);
+  if (orb.autoSpin) tgt.theta -= 0.15 * dt;
+  orb.theta += (tgt.theta - orb.theta) * lf;
+  orb.phi   += (tgt.phi   - orb.phi)   * lf;
+  orb.r     += (tgt.r     - orb.r)     * lf;
+  camera.position.set(
+    Math.sin(orb.theta) * Math.cos(orb.phi) * orb.r,
+    Math.sin(orb.phi)   * orb.r + 0.1,
+    Math.cos(orb.theta) * Math.cos(orb.phi) * orb.r
+  );
+  camera.lookAt(lookAt);
+}
+
+// ════════════════════════════════════════════════
+// ENVIRONMENT MAP
+// Try to fetch a real studio HDRI from Poly Haven.
+// Falls back to procedural canvas env if fetch fails.
+// ════════════════════════════════════════════════
+// Dark automotive studio environment — designed so paint color shows clearly.
+// No external HDRI fetch. We paint exactly what reflects in the car.
+function buildProceduralEnv() {
+  const W = 2048, H = 1024;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  // Near-black base — very dark charcoal
+  ctx.fillStyle = '#04060e'; ctx.fillRect(0, 0, W, H);
+
+  // Top softbox — one narrow bright band across the ceiling (creates the classic
+  // car-photography highlight streak on the hood). Kept tight so it doesn't flood.
+  const softbox = ctx.createLinearGradient(0, 0, 0, H * 0.28);
+  softbox.addColorStop(0,    'rgba(180,200,255,0.38)');
+  softbox.addColorStop(0.45, 'rgba(130,155,220,0.12)');
+  softbox.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = softbox; ctx.fillRect(0, 0, W, H);
+
+  // Left fill — very subtle cool blue, barely visible
+  const fill = ctx.createRadialGradient(0, H*0.38, 0, 0, H*0.38, W*0.28);
+  fill.addColorStop(0,   'rgba(80,110,200,0.14)');
+  fill.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = fill; ctx.fillRect(0, 0, W, H);
+
+  // Right rim accent — tiny warm highlight on the opposite side
+  const rim = ctx.createRadialGradient(W, H*0.30, 0, W, H*0.30, W*0.18);
+  rim.addColorStop(0,   'rgba(255,220,140,0.10)');
+  rim.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = rim; ctx.fillRect(0, 0, W, H);
+
+  // Ground reflection band (horizon) — dark, subtle
+  const hz = ctx.createLinearGradient(0, H*0.48, 0, H*0.60);
+  hz.addColorStop(0,   'rgba(0,0,0,0)');
+  hz.addColorStop(0.5, 'rgba(30,45,90,0.12)');
+  hz.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = hz; ctx.fillRect(0, 0, W, H);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping  = THREE.EquirectangularReflectionMapping;
+  tex.encoding = THREE.sRGBEncoding;
+  const pmrem  = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const rt = pmrem.fromEquirectangular(tex);
+  pmrem.dispose(); tex.dispose();
+  return rt.texture;
+}
+
+function loadHDRI() {
+  return new Promise(resolve => {
+    setProgress(10, 'LOADING ENVIRONMENT');
+    // Use our controlled dark studio env — no external HDRI that blows out the paint
+    setProgress(30, 'STUDIO READY');
+    resolve(buildProceduralEnv());
+  });
+}
+
+// ════════════════════════════════════════════════
+// SCENE SETUP (runs after env map is ready)
+// ════════════════════════════════════════════════
+async function init() {
+  // 1. Environment map
+  const envMap = await loadHDRI();
+  scene.environment = envMap;
+  scene.background  = new THREE.Color(0x080c14); // keep dark — env is for reflections only
+
+  // 2. Lights
+  setProgress(35, 'SETTING UP LIGHTS');
+
+  // Key light — top-front, cool white, moderate intensity (illuminates without bleaching)
+  const keyLight = new THREE.DirectionalLight(0xddeeff, 1.8);
+  keyLight.position.set(5, 10, 4);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.near = 0.5;
+  keyLight.shadow.camera.far  = 30;
+  keyLight.shadow.camera.left = keyLight.shadow.camera.bottom = -6;
+  keyLight.shadow.camera.right = keyLight.shadow.camera.top   =  6;
+  keyLight.shadow.bias = -0.001;
+  scene.add(keyLight);
+
+  // Fill light — opposite side, very soft, keeps shadows from going full black
+  const fillLight = new THREE.DirectionalLight(0x7080aa, 0.45);
+  fillLight.position.set(-6, 3, 2);
+  scene.add(fillLight);
+
+  // Rim light — from behind, gives depth separation from background
+  const rimLight = new THREE.DirectionalLight(0x4060bb, 0.70);
+  rimLight.position.set(0, 4, -10);
+  scene.add(rimLight);
+
+  // Hemisphere — ambient base. Top cool, bottom very dark
+  scene.add(new THREE.HemisphereLight(0x182840, 0x0a0804, 0.30));
+
+  // 3. Ground
+  const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x06090f, roughness: 0.55, metalness: 0.0,
+    envMap, envMapIntensity: 0.12,
+  });
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(14, 80), groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Glow rings
+  [[2.8, 3.2, 0x152244, 0.55], [3.1, 5.5, 0x0c1530, 0.22]].forEach(([ir, or, col, op]) => {
+    const g = new THREE.Mesh(
+      new THREE.RingGeometry(ir, or, 80),
+      new THREE.MeshBasicMaterial({ color: col, opacity: op, transparent: true, side: THREE.DoubleSide, depthWrite: false })
+    );
+    g.rotation.x = -Math.PI / 2; g.position.y = 0.001;
+    scene.add(g);
+  });
+
+  // 4. Load GLB
+  setProgress(40, 'LOADING MODEL');
+
+  const dracoLoader = new THREE.DRACOLoader();
+  dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+
+  const gltfLoader = new THREE.GLTFLoader();
+  gltfLoader.setDRACOLoader(dracoLoader);
+
+  gltfLoader.load(
+    'toyota_tacoma_trd.glb',
+
+    // ── ON LOAD ──
+    (gltf) => {
+      setProgress(85, 'PROCESSING MODEL');
+      const model = gltf.scene;
+
+      // Auto-scale: fit to ~5m length
+      const box    = new THREE.Box3().setFromObject(model);
+      const size   = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale  = 5.0 / maxDim;
+      model.scale.setScalar(scale);
+
+      // Auto-center: sit on ground, centered XZ
+      box.setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      model.position.x -= center.x;
+      model.position.z -= center.z;
+      model.position.y -= box.min.y; // sit on ground
+
+      // ── EXACT MATERIAL ASSIGNMENT ──
+      // We know every material name from the console dump.
+      // Build a lookup table: material name → Three.js material.
+
+      // Paint (user-switchable body color)
+      const matBody = new THREE.MeshPhysicalMaterial({
+        color:              0x4B5E3D,   // Army Green default
+        metalness:          0.0,
+        roughness:          0.22,
+        clearcoat:          1.0,
+        clearcoatRoughness: 0.08,
+        envMap,
+        envMapIntensity:    0.85,      // lower so paint color isn't drowned by HDRI
+      });
+      window._matPaint = matBody; // expose for color picker
+
+      const MAT = {
+        // Body paint — clearcoat PBR
+        'body': matBody,
+
+        // Black plastic trim (fender flares, bumpers, rockers)
+        'plastic': new THREE.MeshStandardMaterial({
+          color: 0x111111, roughness: 0.82, metalness: 0.02,
+          envMap, envMapIntensity: 0.18,
+        }),
+
+        // Very dark surfaces (grille mesh, interior gaps)
+        'dark': new THREE.MeshStandardMaterial({
+          color: 0x080808, roughness: 0.92, metalness: 0.0,
+        }),
+
+        // Window glass — fully opaque black tint (no transmission = no see-through)
+        'glass': new THREE.MeshPhysicalMaterial({
+          color: 0x080c10, metalness: 0.08, roughness: 0.0,
+          transmission: 0.0, transparent: false,
+          envMap, envMapIntensity: 1.4, side: THREE.DoubleSide,
+        }),
+
+        // Taillights — deep red emissive
+        'rear_lights': new THREE.MeshStandardMaterial({
+          color: 0xcc1100, roughness: 0.25, metalness: 0.0,
+          emissive: new THREE.Color(0xcc1100), emissiveIntensity: 0.55,
+          transparent: true, opacity: 0.9,
+        }),
+
+        // Brake lights
+        'brake_lights': new THREE.MeshStandardMaterial({
+          color: 0xdd0000, roughness: 0.20, metalness: 0.0,
+          emissive: new THREE.Color(0xcc0000), emissiveIntensity: 0.60,
+        }),
+
+        // Reverse lights — white
+        'reverse_lights': new THREE.MeshStandardMaterial({
+          color: 0xeeeeee, roughness: 0.30, metalness: 0.0,
+          emissive: new THREE.Color(0xddddcc), emissiveIntensity: 0.35,
+        }),
+
+        // Turn signals — amber
+        'turnsignal_lights': new THREE.MeshStandardMaterial({
+          color: 0xff8800, roughness: 0.28, metalness: 0.0,
+          emissive: new THREE.Color(0xdd6600), emissiveIntensity: 0.45,
+        }),
+
+        // Mirrors — gloss body color (chrome look)
+        'mirrors': new THREE.MeshStandardMaterial({
+          color: 0xb0b0a8, metalness: 0.88, roughness: 0.12,
+          envMap, envMapIntensity: 2.0,
+        }),
+
+        // Headlight inner housing / reflector — chrome
+        'headlights': new THREE.MeshStandardMaterial({
+          color: 0xcccccc, metalness: 0.92, roughness: 0.10,
+          envMap, envMapIntensity: 2.2,
+        }),
+
+        // Headlight glass lens — clear, very subtle tint
+        'headlights_glass': new THREE.MeshPhysicalMaterial({
+          color: 0xffffff, metalness: 0.0, roughness: 0.0,
+          transmission: 0.94, transparent: true, opacity: 0.08, ior: 1.50,
+          envMap, envMapIntensity: 1.2, side: THREE.DoubleSide,
+        }),
+
+        // Front DRL / LED strip — bright white emissive
+        'front_lights': new THREE.MeshStandardMaterial({
+          color: 0xffffff, roughness: 0.25, metalness: 0.0,
+          emissive: new THREE.Color(0xeeeeff), emissiveIntensity: 0.70,
+        }),
+
+        // Tires — matte black rubber
+        'Tires': new THREE.MeshStandardMaterial({
+          color: 0x141414, roughness: 0.94, metalness: 0.0,
+        }),
+
+        // Rim main body — dark gunmetal (TRD Pro wheel)
+        'rim_main': new THREE.MeshStandardMaterial({
+          color: 0x222220, metalness: 0.80, roughness: 0.40,
+          envMap, envMapIntensity: 1.2,
+        }),
+
+        // Rim color accent — machined silver face
+        'rim_color': new THREE.MeshStandardMaterial({
+          color: 0xb8b8b0, metalness: 0.95, roughness: 0.15,
+          envMap, envMapIntensity: 2.0,
+        }),
+      };
+
+      // Walk every mesh and assign by exact material name
+      const matList = new Set();
+      model.traverse(child => {
+        if (!child.isMesh) return;
+        child.castShadow    = true;
+        child.receiveShadow = true;
+
+        const matName = child.material?.name || '';
+        matList.add(`${child.name} | ${matName}`);
+
+        if (MAT[matName]) {
+          child.material = MAT[matName];
+        } else {
+          // Unknown material — keep original but add envMap
+          if (child.material) {
+            child.material = child.material.clone();
+            child.material.envMap = envMap;
+            child.material.envMapIntensity = 0.6;
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      scene.add(model);
+
+      // Populate debug panel
+      const panel = document.getElementById('mat-panel');
+      [...matList].sort().forEach(name => {
+        const d = document.createElement('div');
+        d.textContent = name;
+        panel.appendChild(d);
+      });
+
+      // Adjust camera to fit model
+      const finalBox = new THREE.Box3().setFromObject(model);
+      const finalSize = finalBox.getSize(new THREE.Vector3());
+      const fitDist = finalSize.length() * 1.1;
+      tgt.r = fitDist;
+      lookAt.set(0, finalSize.y * 0.42, 0);
+
+      setProgress(100, 'READY');
+      setTimeout(hideLoading, 400);
+
+      // (color switcher already set via window._matPaint = matBody above)
+    },
+
+    // ── ON PROGRESS ──
+    (xhr) => {
+      if (xhr.total) {
+        const pct = 40 + (xhr.loaded / xhr.total) * 44;
+        setProgress(pct, `LOADING MODEL ${Math.round(pct - 40)}%`);
+      }
+    },
+
+    // ── ON ERROR ──
+    (err) => {
+      console.error('GLB load error:', err);
+      loadStatus.textContent = 'ERROR — CHECK CONSOLE';
+      loadStatus.style.color = '#ff4444';
+    }
+  );
+}
+
+// ════════════════════════════════════════════════
+// PAINT COLOR SWITCHER
+// ════════════════════════════════════════════════
+document.querySelectorAll('.sw').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!window._matPaint) return;
+    document.querySelectorAll('.sw').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    window._matPaint.color.setHex(parseInt(btn.dataset.hex, 16));
+  });
+});
+
+// ════════════════════════════════════════════════
+// MATERIAL DEBUG PANEL TOGGLE
+// ════════════════════════════════════════════════
+window.addEventListener('keydown', e => {
+  if (e.key === 'm' || e.key === 'M') {
+    const p = document.getElementById('mat-panel');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  }
+});
+
+// ════════════════════════════════════════════════
+// RENDER LOOP
+// ════════════════════════════════════════════════
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  tickCamera(clock.getDelta());
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ════════════════════════════════════════════════
+// KICK OFF
+// ════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>

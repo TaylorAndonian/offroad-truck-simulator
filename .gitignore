@@ -1,0 +1,6 @@
+# 3D model from Sketchfab: not redistributed here (see README)
+*.glb
+# Local WiFi credentials
+dual_motor_webserver/secrets.h
+node_modules/
+.DS_Store
