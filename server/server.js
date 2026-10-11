@@ -30,7 +30,13 @@ http.createServer((req, res) => {
   // Strip query strings
   urlPath = urlPath.split('?')[0];
 
-  const filePath = path.join(GAME_DIR, urlPath);
+  // Resolve inside GAME_DIR only, so "/../" URLs can't read other files on the PC
+  const filePath = path.resolve(GAME_DIR, '.' + decodeURIComponent(urlPath));
+  if (!filePath.startsWith(GAME_DIR + path.sep)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('403 Forbidden');
+    return;
+  }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
